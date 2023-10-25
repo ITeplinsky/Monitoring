@@ -1,0 +1,65 @@
+version: "3"
+
+services:
+  nginx:
+    image: nginx:1.25.2
+    container_name: nginx
+    hostname: nginx-www
+    restart: unless-stopped
+    ports:
+      #порт для stub_status 
+      - 8080:8080
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/nginx.conf
+      - ./nginx/log:/var/log/nginx
+
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    container_name: prometheus
+    hostname: prometheus
+    ports:
+      - 9090:9090
+    #перезапуск будет работать до тех пор, пока пользователь его не остановит
+    restart: unless-stopped
+
+
+  nginx-prometheus-exporter:
+    image: nginx/nginx-prometheus-exporter:0.10.0
+    container_name: nginx-prometheus-exporter
+    hostname: nginx-prometheus-exporter
+    restart: unless-stopped
+    ports:
+      - 9113:9113
+    command:
+      #экспортировать метрики NGINX 
+      #(на страницу о состоянии)
+      #- nginx.scrape-uri=http://nginx:80/stub_status
+      - -nginx.scrape-uri=http://nginx:8080/stub_status
+     #кол-во попыток,который будет делать экспортер при старте,чтобы снять метрики с nginx-контейнера, 
+     #перед тем,как выдать ошибку о недоступности целевого nginx
+      - nginx.retries=10
+     #путь, на котором будут доступны метрики экспортера
+      - web.telemetry-path=/metrics
+      #порт для метрик экспортера
+    depends_on:
+      - prometheus
+
+
+  grafana:
+    image: grafana/grafana:10.1.2-ubuntu
+    container_name: grafana
+    hostname: grafana
+    user: root
+    ports:
+      - 3000:3000
+    volumes:
+      #GF_PATHS_DATA
+      - ./grafana:/var/lib/grafana
+      #GF_PATHS_PROVISIONING
+      - ./grafana/provisoning/:/etc/grafana/provisioning/
+    restart: unless-stopped
+    depends_on:
+      - prometheus
